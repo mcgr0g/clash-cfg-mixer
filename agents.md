@@ -14,7 +14,14 @@ This registry serves as an index for AI assistants to navigate operational logic
 | `tests/fixtures/input/` | Mock source layers repository | Static YAML files stored inside Git for test baseline processing. |
 | `tests/fixtures/expected/` | Expected target profiles output | Static ground-truth YAML outputs for final `diff` validation assertions, plus normalized runtime-dump ground truth (`general-*.yml`) for the mihomo API comparison. |
 | `.github/dependabot.yml` | Upstream automated tracking file | Triggers daily updates checking the LinuxServer base image status. |
-| `mise.toml` | Tasks orchestration matrix | Houses the granular `test:*` DAG tasks (`build`, `up-mixer`, `mix-direct`, `up-proxies`, `trigger`, `verify-mix-*`, `verify-api-*`) orchestrated via `depends`; aggregate `test` entry point with `depends_post` teardown; also `up`, `down`.
+| `mise.toml` | Tasks orchestration matrix | Houses the granular `test:*` DAG tasks (`build`, `up-mixer`, `mix-direct`, `up-proxies`, `trigger`, `verify-mix-*`, `verify-api-*`) orchestrated via `depends`; aggregate `test` entry point with `depends_post` teardown; also `up`, `down`. |
+| `tests/fixtures/output/` | Compiled-config scratch dir for tests | Gitignored except the committed `.gitkeep` (see Conventions); populated by `mix.sh` via bind-mount. |
+
+## Conventions & Secrets
+
+* All environment values and secrets for the test stack live in `mise.toml` `[env]`. `.env` is only an optional local override (gitignored). CI never copies `.env.template` — that file is an example for the production `docker compose up` flow.
+* `tests/fixtures/output/.gitkeep` is committed intentionally: the bind-mounted output dir must exist on a fresh checkout, otherwise Docker creates it root-owned and `mix.sh` (running as `abc`) fails with `mv: Permission denied`. Never manage bind-mount permissions from the Dockerfile (build stage runs before mounts exist) — prepare the directory in the repo/CI instead.
+* Production operators must create `${HOST_OUTPUT_DIR}` themselves before `docker compose up`; ownership of host bind-mounts is outside the image's scope.
 
 ## Execution Hooks For AI Agents
 * To initialize the workspace environment on a clean checkout: `mise run init`

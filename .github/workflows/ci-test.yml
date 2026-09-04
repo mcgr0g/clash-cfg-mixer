@@ -20,9 +20,6 @@ jobs:
       - name: Set up mise
         uses: jdx/mise-action@v4
 
-      - name: Create fallback environment file
-        run: cp .env.template .env
-
       # mise сам вычислит UID раннера на CI, возьмет версию yq и прогонит тесты на порту 2026
       - name: Run Integration Tests via mise
         run: mise run test
