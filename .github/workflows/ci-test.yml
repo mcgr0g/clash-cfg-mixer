@@ -15,10 +15,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
 
       - name: Create fallback environment file
         run: cp .env.template .env
@@ -29,7 +29,7 @@ jobs:
 
       - name: Log in to GitHub Container Registry
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -44,7 +44,7 @@ jobs:
       # При сборке продакшн-образа мы запрашиваем переменную YQ_VERSION напрямую у mise через xargs/env
       - name: Build and Push Production Image
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
