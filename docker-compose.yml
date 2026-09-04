@@ -1,0 +1,62 @@
+services:
+  clash-cfg-mixer:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-mcgr0g}/clash-cfg-mixer:latest
+    container_name: clash-cfg-mixer
+    ports:
+      - "2026:2026"
+    environment:
+      - PUID=${HOST_UID}
+      - PGID=${HOST_GID}
+      - TZ=${TZ}
+      - INPUT_DIR=/config-src
+      - OUTPUT_DIR=/config-out
+      - PROXY_NAS_HOST=proxy-core-nas
+      - PROXY_CELL_HOST=proxy-core-cell
+      - MIHOMO_SECRET=${MIHOMO_SECRET}
+      - WEBHOOK_SECRET_TOKEN=${WEBHOOK_SECRET_TOKEN}
+    volumes:
+      - ${HOST_INPUT_DIR}:/config-src:ro
+      - ${HOST_OUTPUT_DIR}:/config-out
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:2026/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  proxy-core-nas:
+    image: metacubex/mihomo:latest
+    container_name: proxy-core-nas
+    user: "${HOST_UID}:${HOST_GID}"
+    ports:
+      - "9091:9090"
+    environment:
+      - MIHOMO_SECRET=${MIHOMO_SECRET}
+      - CLASH_OVERRIDE_SECRET=${MIHOMO_SECRET}
+      - SAFE_PATHS=/config
+    volumes:
+      - ${HOST_OUTPUT_DIR}:/config:ro
+      - nas_cache:/clash
+    command: -d /clash -f /config/config-nas.yml
+    restart: unless-stopped
+
+  proxy-core-cell:
+    image: metacubex/mihomo:latest
+    container_name: proxy-core-cell
+    user: "${HOST_UID}:${HOST_GID}"
+    ports:
+      - "9092:9090"
+    environment:
+      - MIHOMO_SECRET=${MIHOMO_SECRET}
+      - CLASH_OVERRIDE_SECRET=${MIHOMO_SECRET}
+      - SAFE_PATHS=/config
+    volumes:
+      - ${HOST_OUTPUT_DIR}:/config:ro
+      - cell_cache:/clash
+    command: -d /clash -f /config/config-cell.yml
+    restart: unless-stopped
+
+volumes:
+  nas_cache:
+  cell_cache:

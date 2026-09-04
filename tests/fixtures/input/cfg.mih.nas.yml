@@ -1,0 +1,6 @@
+allow-lan: true
+external-controller: 0.0.0.0:9090
+log-level: warning
+
+authentication:
+  - test_lan_user:test_lanpassword

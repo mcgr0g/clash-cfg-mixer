@@ -1,0 +1,22 @@
+# Agent System Map & Registry
+
+This registry serves as an index for AI assistants to navigate operational logic and testing routines.
+
+## Codebase Map
+
+| File Path | Purpose | Key Operational Logic |
+| :--- | :--- | :--- |
+| `Dockerfile` | Multi-stage LinuxServer build | Tracks `ALPINE_VERSION` for daily Dependabot runs. Integrates s6-overlay init services. |
+| `docker-compose.yml` | Production deployment stack | Uses production `core-proxy` container names and fetches built artifacts from GHCR. Proxy API secret comes from env via mihomo's `CLASH_OVERRIDE_SECRET` (config layers stay secret-free); `SAFE_PATHS=/config` allows file-based reload. |
+| `docker-compose.test.yml` | Isolated local/CI test environment | Directs `PROXY_NAS_HOST` variables to `test-proxy-nas` to separate testing domains; same `CLASH_OVERRIDE_SECRET`/`SAFE_PATHS` env wiring as prod. |
+| `hooks.json` | Webhook definitions & cascading actions | Token resolved via Go-template (`` {{ getenv `WEBHOOK_SECRET_TOKEN` }} `` — backtick literal keeps the file valid JSON at rest); requires the `-template` flag in the Dockerfile; reload cascade lives in `mix.sh`. |
+| `mix.sh` | Core mixing compiler utility | Contains size checks (`[ -s "$file" ]`) preventing empty-file overwrites, processes `yq` merges, and reloads the matching proxy via RESTful API (`PUT /configs?force=true`) after each successful compile. |
+| `tests/fixtures/input/` | Mock source layers repository | Static YAML files stored inside Git for test baseline processing. |
+| `tests/fixtures/expected/` | Expected target profiles output | Static ground-truth YAML outputs for final `diff` validation assertions, plus normalized runtime-dump ground truth (`general-*.yml`) for the mihomo API comparison. |
+| `.github/dependabot.yml` | Upstream automated tracking file | Triggers daily updates checking the LinuxServer base image status. |
+| `mise.toml` | Tasks orchestration matrix | Houses the granular `test:*` DAG tasks (`build`, `up-mixer`, `mix-direct`, `up-proxies`, `trigger`, `verify-mix-*`, `verify-api-*`) orchestrated via `depends`; aggregate `test` entry point with `depends_post` teardown; also `up`, `down`.
+
+## Execution Hooks For AI Agents
+* To initialize the workspace environment on a clean checkout: `mise run init`
+* To execute the pristine automated integration check suite: `mise run test`
+* To spin up containers for manual troubleshooting or logs viewing: `mise run up`

@@ -1,0 +1,143 @@
+log-level: info
+mode: rule
+mixed-port: 7897
+tcp-concurrent: true
+unified-delay: true
+dns:
+  enable: true
+  listen: 0.0.0.0:7874
+  ipv6: false
+  cache-algorithm: arc
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  use-hosts: true
+  respect-rules: true
+  default-nameserver:
+    - 1.1.1.1
+    - 8.8.8.8
+  proxy-server-nameserver:
+    - 1.1.1.1
+    - 8.8.8.8
+  nameserver:
+    - https://cloudflare-dns.com/dns-query
+    - https://doh.opendns.com/dns-query
+    - https://dns.google/dns-query
+  nameserver-policy:
+    '+.lan': tcp://192.168.1.1:53 # cisco блокирует UDP, но TCP может пройти через cisco клиент
+    '+.brawlstarsgame.com': https://dns.google/dns-query
+  fake-ip-filter-mode: blacklist
+  fake-ip-filter:
+    - +.lan
+    - +.local
+    - localhost
+    - +.msftconnecttest.com
+    - +.msftncsi.com
+    - +.connectivitycheck.gstatic.com
+    - +.detectportal.firefox.com
+    - +.pool.ntp.org
+    - +.ntp.org
+    - +.time.windows.com
+    - +.3gppnetwork.org
+proxy-providers:
+  vpnd-io-vless:
+    type: http
+    url: "kek"
+    path: ./providers/vpnd-io-vless.yaml
+    interval: 3600
+    format: share
+    health-check:
+      enable: true
+      url: https://cp.cloudflare.com/generate_204
+      interval: 300
+rule-providers:
+  hagezi_pro:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://github.com/zxc-rv/ad-filter/releases/latest/download/adlist.mrs
+    path: ./adblock/adlist.mrs
+    interval: 86400
+proxy-groups:
+  - name: 'Ad-Spam-Spy'
+    type: select
+    proxies: [REJECT, DIRECT]
+    icon: "https://www.svgrepo.com/show/300290/sign-roadblock.svg"
+  - name: 'Pinned-Proxy'
+    type: select
+    use: [vpnd-io-vless]
+  - name: 'Advertisement'
+    type: select
+    use: [vpnd-io-vless]
+    proxies: [REJECT]
+  - name: 'Normal-Proxy'
+    type: url-test
+    use: [vpnd-io-vless]
+    url: 'https://cp.cloudflare.com/generate_204'
+    interval: 300
+    tolerance: 150
+  - name: 'Other-Traffic'
+    type: select
+    use: [vpnd-io-vless]
+    proxies: [DIRECT]
+  - name: GLOBAL
+    type: select
+    hidden: true
+    proxies: ['Normal-Proxy', DIRECT]
+rules:
+  - GEOSITE,private,DIRECT
+  - GEOIP,private,DIRECT,no-resolve
+  - IP-CIDR,1.1.1.1/32,DIRECT,no-resolve
+  - IP-CIDR,8.8.8.8/32,DIRECT,no-resolve
+  - IP-CIDR,208.67.222.222/32,DIRECT,no-resolve
+  - IP-CIDR,77.88.8.8/32,DIRECT,no-resolve
+  # Just block it forever
+  - RULE-SET,hagezi_pro,Ad-Spam-Spy
+  - GEOSITE,category-ads-all,Ad-Spam-Spy
+  - GEOSITE,win-spy,Ad-Spam-Spy
+  # torrent traffic
+  - DST-PORT,6881-6889,DIRECT # standart BitTorrent port
+  - DST-PORT,51413,DIRECT # transmission port
+  # ### Pinned-Proxy
+  - GEOSITE,openai,Pinned-Proxy
+  - GEOSITE,google-gemini,Pinned-Proxy
+  - GEOSITE,anthropic,Pinned-Proxy
+  - DOMAIN-SUFFIX,grok.com,Pinned-Proxy
+  - DOMAIN-SUFFIX,2ip.io,Pinned-Proxy
+  - DOMAIN-SUFFIX,ipinfo.io,Pinned-Proxy
+  - DOMAIN-SUFFIX,ip-api.com,Pinned-Proxy
+  - DOMAIN-SUFFIX,whatismyipaddress.com,Pinned-Proxy
+  - DOMAIN-SUFFIX,whatismyip.com,Pinned-Proxy
+  - DOMAIN-SUFFIX,myip.com,Pinned-Proxy
+  - DOMAIN-SUFFIX,ipleak.net,Pinned-Proxy
+  - DOMAIN-SUFFIX,icanhazip.com,Pinned-Proxy
+  - DOMAIN-SUFFIX,ident.me,Pinned-Proxy
+  - DOMAIN-SUFFIX,ip.sb,Pinned-Proxy
+  - DOMAIN-SUFFIX,wimi5.com,Pinned-Proxy
+  - DOMAIN-SUFFIX,ip138.com,Pinned-Proxy
+  - DOMAIN-SUFFIX,ipify.org,Pinned-Proxy
+  - DOMAIN-SUFFIX,myexternalip.com,Pinned-Proxy
+  - DOMAIN-SUFFIX,trackip.net,Pinned-Proxy
+  # ### Advertisement
+  - GEOSITE,youtube,Advertisement
+  - DOMAIN-KEYWORD,jnn/v1/Create,Advertisement # BotGuard для YT
+  - GEOSITE,tiktok,Advertisement
+  - GEOSITE,facebook,Advertisement
+  - GEOSITE,netflix,Advertisement
+  - GEOIP,netflix,Advertisement
+  - GEOSITE,category-porn,Advertisement
+  # ### Normal-Proxy
+  - GEOSITE,spotify,Normal-Proxy
+  - GEOSITE,tidal,Normal-Proxy
+  - GEOSITE,category-public-tracker,Normal-Proxy
+  - DOMAIN-SUFFIX,radarr.video,Normal-Proxy
+  - DOMAIN-SUFFIX,tmdb.org,Normal-Proxy
+  - GEOSITE,microsoft,Normal-Proxy
+  - GEOSITE,intel,Normal-Proxy
+  # ### ПРАВИЛО №7: Весь Other-Traffic
+  - GEOSITE,google,Other-Traffic
+  - GEOSITE,apple,Other-Traffic
+  - MATCH,Other-Traffic
+allow-lan: false
+external-controller: 0.0.0.0:9090
+authentication:
+  - test_cell_user:test_cell_passord

@@ -1,0 +1,70 @@
+services:
+  test-clash-cfg-mixer:
+    build:
+      context: .
+      args:
+        # Указываем, что при сборке нужно подхватить аргумент YQ_VERSION из CLI
+        - YQ_VERSION
+    container_name: test-clash-cfg-mixer
+    ports:
+      - "2026:2026"
+    environment:
+      - PUID=${HOST_UID}
+      - PGID=${HOST_GID}
+      - TZ=Europe/Moscow
+      - INPUT_DIR=/config-src
+      - OUTPUT_DIR=/config-out
+      - PROXY_NAS_HOST=test-proxy-nas
+      - PROXY_CELL_HOST=test-proxy-cell
+      - MIHOMO_SECRET=${MIHOMO_SECRET}
+      - WEBHOOK_SECRET_TOKEN=${WEBHOOK_SECRET_TOKEN}
+    volumes:
+      - ./tests/fixtures/input:/config-src:ro
+      - ./tests/fixtures/output:/config-out
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:2026/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  test-proxy-nas:
+    image: metacubex/mihomo:v1.19.30
+    container_name: test-proxy-nas
+    # Динамические права раннера на CI или юзера локально
+    user: "${HOST_UID}:${HOST_GID}"
+    ports:
+      - "9091:9090"
+    environment:
+      - MIHOMO_SECRET=${MIHOMO_SECRET}
+      - CLASH_OVERRIDE_SECRET=${MIHOMO_SECRET}
+      - SAFE_PATHS=/config
+    volumes:
+      - ./tests/fixtures/output:/config:ro
+    command: -d /tmp -f /config/config-nas.yml
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null --header=\"Authorization: Bearer $${MIHOMO_SECRET}\" http://127.0.0.1:9090/version"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  test-proxy-cell:
+    image: metacubex/mihomo:v1.19.30
+    container_name: test-proxy-cell
+    user: "${HOST_UID}:${HOST_GID}"
+    ports:
+      - "9092:9090"
+    environment:
+      - MIHOMO_SECRET=${MIHOMO_SECRET}
+      - CLASH_OVERRIDE_SECRET=${MIHOMO_SECRET}
+      - SAFE_PATHS=/config
+    volumes:
+      - ./tests/fixtures/output:/config:ro
+    command: -d /tmp -f /config/config-cell.yml
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null --header=\"Authorization: Bearer $${MIHOMO_SECRET}\" http://127.0.0.1:9090/version"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s

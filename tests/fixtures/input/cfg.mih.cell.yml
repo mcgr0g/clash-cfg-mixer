@@ -1,0 +1,5 @@
+allow-lan: false
+external-controller: 0.0.0.0:9090
+
+authentication:
+  - test_cell_user:test_cell_passord

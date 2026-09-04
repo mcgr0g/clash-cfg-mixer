@@ -1,0 +1,123 @@
+[vars]
+yq_version = "4.53.6"
+
+[tools]
+yq = "{{ vars.yq_version }}"
+
+[env]
+_.file = ".env"
+HOST_UID = "{{ exec(command='id -u 2>/dev/null || echo 1000') }}"
+HOST_GID = "{{ exec(command='id -g 2>/dev/null || echo 1000') }}"
+YQ_VERSION = "{{ vars.yq_version }}"
+TZ="Europe/Moscow"
+WEBHOOK_SECRET_TOKEN="change_me_to_something_secure_please"
+MIHOMO_SECRET="make_mihomo_great_again"
+
+[tasks."test:build"]
+description = "Build the mixer image with the pinned yq and webhook tools"
+run = "docker compose -f docker-compose.test.yml build"
+
+[tasks."test:up-mixer"]
+description = "Start mixer container and wait for its healthcheck"
+depends = ["down", "test:build"]
+run = "docker compose -f docker-compose.test.yml up -d --wait test-clash-cfg-mixer"
+
+[tasks."test:mix-direct"]
+description = "Run mix.sh directly in the mixer container to bootstrap compiled configs"
+depends = ["test:up-mixer"]
+run = """
+docker compose -f docker-compose.test.yml exec -T --user abc test-clash-cfg-mixer /usr/local/bin/mix.sh
+[ -s tests/fixtures/output/config-nas.yml ] && [ -s tests/fixtures/output/config-cell.yml ] \
+  || { echo "[mix-direct] compiled output files missing or empty" >&2; exit 1; }
+"""
+
+[tasks."test:up-proxies"]
+description = "Start mihomo proxy containers and wait for their healthchecks"
+depends = ["test:mix-direct"]
+run = "docker compose -f docker-compose.test.yml up -d --wait test-proxy-nas test-proxy-cell"
+
+[tasks."test:trigger"]
+description = "Fire the authorized webhook trigger and verify mix + proxy reload cascade"
+depends = ["test:up-proxies"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+response=$(curl -sf -X POST "http://localhost:2026/hooks/trigger-mix?token=${WEBHOOK_SECRET_TOKEN}")
+echo "$response"
+
+if ! echo "$response" | grep -q "Successfully compiled: config-nas.yml"; then
+  echo "[trigger] nas profile was not compiled via webhook" >&2
+  exit 1
+fi
+if ! echo "$response" | grep -q "Successfully compiled: config-cell.yml"; then
+  echo "[trigger] cell profile was not compiled via webhook" >&2
+  exit 1
+fi
+if ! echo "$response" | grep -q "Reloaded test-proxy-nas"; then
+  echo "[trigger] nas proxy was not reloaded after mix" >&2
+  exit 1
+fi
+if ! echo "$response" | grep -q "Reloaded test-proxy-cell"; then
+  echo "[trigger] cell proxy was not reloaded after mix" >&2
+  exit 1
+fi
+"""
+
+[tasks."test:verify-mix-nas"]
+description = "Byte-diff compiled nas profile against expected fixture"
+depends = ["test:mix-direct"]
+run = "diff -u tests/fixtures/expected/config-nas.yml tests/fixtures/output/config-nas.yml"
+
+[tasks."test:verify-mix-cell"]
+description = "Byte-diff compiled cell profile against expected fixture"
+depends = ["test:mix-direct"]
+run = "diff -u tests/fixtures/expected/config-cell.yml tests/fixtures/output/config-cell.yml"
+
+[tasks."test:verify-api-nas"]
+description = "Compare live nas runtime state against normalized expected fixture"
+depends = ["test:trigger"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p local/test-artifacts
+code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:9091/configs)
+if [ "$code" != "401" ]; then
+  echo "[verify-api-nas] unauthenticated request expected 401, got $code" >&2
+  exit 1
+fi
+curl -sf -H "Authorization: Bearer ${MIHOMO_SECRET}" http://localhost:9091/configs -o local/test-artifacts/live-nas.json
+yq eval 'del(.global-ua) | sort_keys(..)' -o=json local/test-artifacts/live-nas.json > /tmp/actual-nas.norm.json
+yq eval 'sort_keys(..)' -o=json tests/fixtures/expected/general-nas.yml > /tmp/expected-nas.norm.json
+diff -u /tmp/expected-nas.norm.json /tmp/actual-nas.norm.json
+"""
+
+[tasks."test:verify-api-cell"]
+description = "Compare live cell runtime state against normalized expected fixture"
+depends = ["test:trigger"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p local/test-artifacts
+code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:9092/configs)
+if [ "$code" != "401" ]; then
+  echo "[verify-api-cell] unauthenticated request expected 401, got $code" >&2
+  exit 1
+fi
+curl -sf -H "Authorization: Bearer ${MIHOMO_SECRET}" http://localhost:9092/configs -o local/test-artifacts/live-cell.json
+yq eval 'del(.global-ua) | sort_keys(..)' -o=json local/test-artifacts/live-cell.json > /tmp/actual-cell.norm.json
+yq eval 'sort_keys(..)' -o=json tests/fixtures/expected/general-cell.yml > /tmp/expected-cell.norm.json
+diff -u /tmp/expected-cell.norm.json /tmp/actual-cell.norm.json
+"""
+
+[tasks."test"]
+description = "Run granular integration test suite against live Mihomo API responses"
+depends = ["test:verify-mix-nas", "test:verify-mix-cell", "test:verify-api-nas", "test:verify-api-cell"]
+depends_post = ["down"]
+
+[tasks."up"]
+description = "Spin up the test stack for manual debugging"
+run = "docker compose -f docker-compose.test.yml up --build"
+
+[tasks."down"]
+description = "Tear down the test stack"
+run = "docker compose -f docker-compose.test.yml down -v"

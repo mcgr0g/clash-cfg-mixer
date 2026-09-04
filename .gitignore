@@ -1,0 +1,16 @@
+# Runtime & temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+local/
+
+# IDE & System files
+.vscode/
+.DS_Store
+.env
+
+# Automated Testing Infrastructure
+tests/fixtures/output/*
+# Игнорируем всё внутри папки вывода тестов, КРОМЕ самого каталога
+!tests/fixtures/output/.gitkeep
