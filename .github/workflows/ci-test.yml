@@ -35,6 +35,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Экспортируем YQ_VERSION из mise [env] в env контекст workflow:
+      # build-push-action выполняется вне mise, поэтому берём значение заранее.
+      - name: Export YQ_VERSION from mise
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        run: mise exec -- sh -c 'echo "YQ_VERSION=$YQ_VERSION" >> "$GITHUB_ENV"'
+
       # При сборке продакшн-образа мы запрашиваем переменную YQ_VERSION напрямую у mise через xargs/env
       - name: Build and Push Production Image
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
@@ -47,4 +53,4 @@ jobs:
             YQ_VERSION=${{ env.YQ_VERSION }}
           tags: |
             ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:v${{ github.run_number }
+            ghcr.io/${{ github.repository }}:v${{ github.run_number }}
