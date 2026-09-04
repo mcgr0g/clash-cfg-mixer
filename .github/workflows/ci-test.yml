@@ -32,13 +32,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Экспортируем YQ_VERSION из mise [env] в env контекст workflow:
-      # build-push-action выполняется вне mise, поэтому берём значение заранее.
-      - name: Export YQ_VERSION from mise
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        run: mise exec -- sh -c 'echo "YQ_VERSION=$YQ_VERSION" >> "$GITHUB_ENV"'
-
-      # При сборке продакшн-образа мы запрашиваем переменную YQ_VERSION напрямую у mise через xargs/env
+      # Версии базовых образов заданы литералами в Dockerfile (FROM),
+      # чтобы Dependabot мог предлагать обновления.
       - name: Build and Push Production Image
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: docker/build-push-action@v7
@@ -46,8 +41,10 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          build-args: |
-            YQ_VERSION=${{ env.YQ_VERSION }}
+          # Пуш attestation-манифестов (provenance/SBOM) падает на новых раннерах
+          # с containerd image store: "ERROR: unknown blob" при пуше в GHCR.
+          provenance: false
+          sbom: false
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:v${{ github.run_number }}

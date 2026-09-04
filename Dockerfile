@@ -1,11 +1,7 @@
-ARG ALPINE_VERSION=3.20
-ARG YQ_VERSION
-ARG WEBHOOK_VERSION=2.8.2
+FROM mikefarah/yq:4.53.6 AS yq-source
+FROM almir/webhook:2.8.2 AS webhook-source
 
-FROM mikefarah/yq:${YQ_VERSION} AS yq-source
-FROM almir/webhook:${WEBHOOK_VERSION} AS webhook-source
-
-FROM ghcr.io/linuxserver/baseimage-alpine:${ALPINE_VERSION}
+FROM ghcr.io/linuxserver/baseimage-alpine:3.20
 
 RUN apk add --no-cache curl bash
 

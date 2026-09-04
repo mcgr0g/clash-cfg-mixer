@@ -2,9 +2,6 @@ services:
   test-clash-cfg-mixer:
     build:
       context: .
-      args:
-        # Указываем, что при сборке нужно подхватить аргумент YQ_VERSION из CLI
-        - YQ_VERSION
     container_name: test-clash-cfg-mixer
     ports:
       - "2026:2026"
