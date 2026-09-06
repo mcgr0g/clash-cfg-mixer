@@ -1,4 +1,45 @@
 services:
+  git-sync:
+    image: registry.k8s.io/git-sync/git-sync:v4.7.1
+    container_name: git-sync
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      - GITSYNC_REPO=https://github.com/mcgr0g/clash-cfg-mixer.git # just for example, use your own
+      - GITSYNC_REF=main
+      - GITSYNC_ROOT=/git
+      - GITSYNC_LINK=current
+      - GITSYNC_PERIOD=30s
+      - GITSYNC_DEPTH=1
+      - GITSYNC_FILTER=blob:none
+      - GITSYNC_WEBHOOK_URL=http://clash-cfg-mixer:2026/hooks/trigger-mix?token=${WEBHOOK_SECRET_TOKEN}
+      - GITSYNC_WEBHOOK_TIMEOUT=15s
+    volumes:
+      - ${GIT_SYNC_DIR}:/git
+    restart: unless-stopped
+
+  clash-profile-server:
+    image: halverneus/static-file-server:v1.8.12
+    container_name: clash-profile-server
+    ports:
+      - "8181:8080"
+    environment:
+      - FOLDER=/profiles
+      - PORT=8080
+      - SHOW_LISTING=false
+    volumes:
+      - ${CLASH_OUT_CFG_DIR}:/profiles:ro
+    restart: unless-stopped
+
+  envlinks:
+    image: maxhollmann/envlinks:v0.6
+    container_name: envlinks
+    ports:
+      - "88:80"
+    environment:
+      LINKS_TITLE: "Clash profiles"
+      LINK_1_CELL_PROFILE: "${PROFILE_BASE_URL}/config-cell.yml icon:download-circle-outline"
+    restart: unless-stopped
+
   clash-cfg-mixer:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-mcgr0g}/clash-cfg-mixer:latest
     container_name: clash-cfg-mixer
@@ -8,15 +49,16 @@ services:
       - PUID=${HOST_UID}
       - PGID=${HOST_GID}
       - TZ=${TZ}
-      - INPUT_DIR=/config-src
+      - INPUT_DIR=/git/current/tests/fixtures/input # just test data, your production path may be another
       - OUTPUT_DIR=/config-out
       - PROXY_NAS_HOST=proxy-core-nas
       - PROXY_CELL_HOST=proxy-core-cell
       - MIHOMO_SECRET=${MIHOMO_SECRET}
       - WEBHOOK_SECRET_TOKEN=${WEBHOOK_SECRET_TOKEN}
     volumes:
-      - ${HOST_INPUT_DIR}:/config-src:ro
-      - ${HOST_OUTPUT_DIR}:/config-out
+      - ${GIT_SYNC_DIR}:/git:ro
+      - ${CLASH_OUT_CFG_DIR}:/config-out
+      - ${CLASH_CACHE_DIR}:/config
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://127.0.0.1:2026/"]
       interval: 5s
@@ -29,6 +71,9 @@ services:
     image: metacubex/mihomo:latest
     container_name: proxy-core-nas
     user: "${HOST_UID}:${HOST_GID}"
+    depends_on:
+      clash-cfg-mixer:
+        condition: service_healthy
     ports:
       - "9091:9090"
     environment:
@@ -36,15 +81,18 @@ services:
       - CLASH_OVERRIDE_SECRET=${MIHOMO_SECRET}
       - SAFE_PATHS=/config
     volumes:
-      - ${HOST_OUTPUT_DIR}:/config:ro
-      - nas_cache:/clash
-    command: -d /clash -f /config/config-nas.yml
+      - ${CLASH_OUT_CFG_DIR}:/config:ro
+      - ${CLASH_CACHE_DIR}:/clash
+    command: -d /clash/nas -f /config/config-nas.yml
     restart: unless-stopped
 
   proxy-core-cell:
     image: metacubex/mihomo:latest
     container_name: proxy-core-cell
     user: "${HOST_UID}:${HOST_GID}"
+    depends_on:
+      clash-cfg-mixer:
+        condition: service_healthy
     ports:
       - "9092:9090"
     environment:
@@ -52,11 +100,7 @@ services:
       - CLASH_OVERRIDE_SECRET=${MIHOMO_SECRET}
       - SAFE_PATHS=/config
     volumes:
-      - ${HOST_OUTPUT_DIR}:/config:ro
-      - cell_cache:/clash
-    command: -d /clash -f /config/config-cell.yml
+      - ${CLASH_OUT_CFG_DIR}:/config:ro
+      - ${CLASH_CACHE_DIR}:/clash
+    command: -d /clash/cell -f /config/config-cell.yml
     restart: unless-stopped
-
-volumes:
-  nas_cache:
-  cell_cache:

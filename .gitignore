@@ -14,3 +14,8 @@ local/
 tests/fixtures/output/*
 # Игнорируем всё внутри папки вывода тестов, КРОМЕ самого каталога
 !tests/fixtures/output/.gitkeep
+
+# Production runtime (bind-mount targets; created by operator before `docker compose up`)
+cfg-out/
+git-repo/
+cache/
