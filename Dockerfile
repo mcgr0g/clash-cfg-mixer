@@ -1,4 +1,4 @@
-FROM mikefarah/yq:4.53.6 AS yq-source
+FROM mikefarah/yq:4.54.1 AS yq-source
 FROM almir/webhook:2.8.3 AS webhook-source
 
 FROM ghcr.io/linuxserver/baseimage-alpine:3.24
