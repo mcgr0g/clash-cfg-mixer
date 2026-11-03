@@ -34,7 +34,7 @@ lan-allowed-ips:
   - ::/0
 lan-disallowed-ips: null
 allow-lan: true
-bind-address: "*"
+bind-address: '*'
 inbound-tfo: false
 inbound-mptcp: false
 mode: rule
@@ -44,18 +44,18 @@ ipv6: true
 interface-name: ""
 routing-mark: 0
 geox-url:
-  geo-ip: https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat
+  geo-ip: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geoip.dat
   mmdb: https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb
   asn: https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/GeoLite2-ASN.mmdb
-  geo-site: https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat
-geo-auto-update: false
-geo-update-interval: 24
-geodata-mode: false
+  geo-site: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geosite.dat
+geo-auto-update: true
+geo-update-interval: 168
+geodata-mode: true
 geodata-loader: memconservative
 geosite-matcher: succinct
 tcp-concurrent: true
 find-process-mode: strict
-sniffing: false
+sniffing: true
 etag-support: true
 keep-alive-idle: 0
 keep-alive-interval: 0

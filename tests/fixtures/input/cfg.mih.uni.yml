@@ -4,6 +4,29 @@ mixed-port: 7897
 tcp-concurrent: true
 unified-delay: true
 
+geo-auto-update: true
+geo-update-interval: 168
+geodata-mode: true
+
+profile:
+  store-selected: true
+
+sniffer:
+  enable: true
+  force-dns-mapping: true
+  sniff:
+    HTTP:
+      ports: [80, 88, 8080] # Защищаем открытый веб-трафик и HTTP-анонсеры
+      override-destination: true
+    TLS:
+      ports: [] # для протокола VLESS-REALITY на любых устройствах приходится отключить
+    QUIC:
+      ports: [] # для протокола VLESS-REALITY на любых устройствах
+
+# --- НАСТРОЙКИ DNS ---
+hosts:
+  'ntc.party': 130.255.77.28
+
 dns:
   enable: true
   listen: 0.0.0.0:7874
@@ -17,16 +40,30 @@ dns:
   default-nameserver:
     - 1.1.1.1
     - 8.8.8.8
+    - 77.88.8.8
+    - tls://223.5.5.5
+    - tls://223.6.6.6
+  # DoH/DoT вместо plain-UDP: защита от перехвата и подмены DNS на этом канале.
+  # Мёртвые адреса нод резолвером не лечатся: лечится выбором ноды/health-check.
   proxy-server-nameserver:
-    - 1.1.1.1
-    - 8.8.8.8
+    - https://cloudflare-dns.com/dns-query
+    - https://dns.google/dns-query
+    - tls://223.5.5.5
+    - tls://223.6.6.6
+    - 77.88.8.8
   nameserver:
     - https://cloudflare-dns.com/dns-query
     - https://doh.opendns.com/dns-query
     - https://dns.google/dns-query
+    - https://doh.pub/dns-query
+    - https://dns.alidns.com/dns-query
 
   nameserver-policy:
-    '+.lan': tcp://192.168.1.1:53 # cisco блокирует UDP, но TCP может пройти через cisco клиент
+    # '+.lan': 192.168.2.1 # cisco блокирует UDP
+    # '+.local': 192.168.2.1
+    '+.lan': tcp://192.168.2.1:53 # но TCP может пройти через cisco клиент
+    '+.local': tcp://192.168.2.1:53
+    '+.supercell.net': https://dns.google/dns-query
     '+.brawlstarsgame.com': https://dns.google/dns-query
 
   fake-ip-filter-mode: blacklist
@@ -43,17 +80,59 @@ dns:
     - +.time.windows.com
     - +.3gppnetwork.org
 
+# --- ДИНАМИЧЕСКИЙ ИСТОЧНИК ПРОКСИ ПРОВАЙДЕРА ---
 proxy-providers:
-  vpnd-io-vless:
+  vpnd-io-ws:
     type: http
-    url: "kek"
-    path: ./providers/vpnd-io-vless.yaml
+    url: "https://sub.example.invalid/PLACEHOLDER"
+    path: ./providers/vpnd-io-ws.yaml
     interval: 3600
-    format: share 
+    format: share
+    override:
+      additional-prefix: "WS | "
+      ip-version: ipv4 # IPv6-адреса нод провайдера недостижимы, dial падает
     health-check:
       enable: true
       url: https://cp.cloudflare.com/generate_204
       interval: 300
+
+  vpnd-io-vless:
+    type: http
+    url: "https://sub.example.invalid/PLACEHOLDER"
+    path: ./providers/vpnd-io-vless.yaml
+    interval: 3600
+    format: share
+    override:
+      additional-prefix: "VLESS | "
+      ip-version: ipv4
+    health-check:
+      enable: true
+      url: https://cp.cloudflare.com/generate_204
+      interval: 300
+
+  golem-ai:
+    type: inline
+    payload:
+      - name: "golem"
+        type: vless
+        server: golem.example.invalid
+        port: 443
+        uuid: 00000000-0000-0000-0000-000000000000
+        network: ws
+        tls: true
+        udp: false
+        servername: golem.example.invalid
+        alpn: [http/1.1]
+        client-fingerprint: chrome
+        ws-opts:
+          path: /GOLEM-SECRET-PATH
+          headers: { Host: golem.example.invalid }
+        ip-version: ipv4
+
+# Источники гео-баз рунета
+geox-url:
+  geosite: "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geosite.dat"
+  geoip: "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geoip.dat"
 
 rule-providers:
   hagezi_pro:
@@ -64,94 +143,256 @@ rule-providers:
     path: ./adblock/adlist.mrs
     interval: 86400
 
+  discord:
+    type: inline
+    behavior: classical
+    format: text
+    payload:
+      - DOMAIN-REGEX,^(?=.*discord)(?!.*\.ru$).*$
+      # - AND,((DOMAIN-KEYWORD,discord),(NOT,(DOMAIN-SUFFIX,ru)))
+      - AND,((IP-CIDR,34.0.192.0/18,no-resolve),(NETWORK,UDP),(DST-PORT,50000-50100))
+      - AND,((IP-CIDR,35.192.0.0/11,no-resolve),(NETWORK,UDP),(DST-PORT,50000-50100))
+      - AND,((IP-CIDR,66.22.192.0/18,no-resolve),(NETWORK,UDP),(DST-PORT,50000-50100))
+
 proxy-groups:
-  - name: 'Ad-Spam-Spy'
+  - name: 'Запломбировано'
     type: select
     proxies: [REJECT, DIRECT]
     icon: "https://www.svgrepo.com/show/300290/sign-roadblock.svg"
 
-  - name: 'Pinned-Proxy'
+  - name: 'Pinned Proxy'
     type: select
-    use: [vpnd-io-vless]
+    use: [golem-ai]
+    icon: "https://www.svgrepo.com/show/306500/openai.svg"
 
-  - name: 'Advertisement'
+  - name: 'Развлечения и Контроль'
     type: select
-    use: [vpnd-io-vless]
+    use: [vpnd-io-vless,vpnd-io-ws]
     proxies: [REJECT]
+    icon: "https://www.svgrepo.com/show/130410/games-control.svg"
 
-  - name: 'Normal-Proxy'
+  - name: 'Normal Proxy'
     type: url-test
-    use: [vpnd-io-vless]
+    use: [vpnd-io-vless,vpnd-io-ws]
     url: 'https://cp.cloudflare.com/generate_204'
     interval: 300
     tolerance: 150
+    icon: "https://www.svgrepo.com/show/390797/360-rotate-vr-movement.svg"
 
-  - name: 'Other-Traffic'
+  - name: 'Остальной трафик'
     type: select
-    use: [vpnd-io-vless]
+    use: [vpnd-io-vless,vpnd-io-ws]
     proxies: [DIRECT]
+    icon: "https://www.svgrepo.com/show/448084/other-income.svg"
 
   - name: GLOBAL
     type: select
     hidden: true
-    proxies: ['Normal-Proxy', DIRECT]
+    proxies: ['Normal Proxy', DIRECT]
 
+# --- ТОЧЕЧНЫЕ ПРАВИЛА МАРШРУТИЗАЦИИ (ЕДИНЫЕ ДЛЯ ВСЕХ) ---
 rules:
+  # Локальные исключения
   - GEOSITE,private,DIRECT
   - GEOIP,private,DIRECT,no-resolve
   - IP-CIDR,1.1.1.1/32,DIRECT,no-resolve
   - IP-CIDR,8.8.8.8/32,DIRECT,no-resolve
   - IP-CIDR,208.67.222.222/32,DIRECT,no-resolve
   - IP-CIDR,77.88.8.8/32,DIRECT,no-resolve
-  # Just block it forever
-  - RULE-SET,hagezi_pro,Ad-Spam-Spy
-  - GEOSITE,category-ads-all,Ad-Spam-Spy
-  - GEOSITE,win-spy,Ad-Spam-Spy
+  # Корпоративная подсеть Cisco всегда напрямик
+  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
 
-  # torrent traffic
-  - DST-PORT,6881-6889,DIRECT  # standart BitTorrent port
-  - DST-PORT,51413,DIRECT      # transmission port
+  # DNS-резолверы и служебные домены — всегда напрямик.
+  # Иначе петля: DoH-домены из dns.nameserver уходят в прокси-группы (GEOSITE,cloudflare,
+  # GEOSITE,google ниже), а ноды этих групп сами не резолвятся — DNS падает и тянет за
+  # собой весь трафик. В логе: cloudflare-dns.com шёл через 'Normal Proxy' и падал на dial
+  # к ноде, а dial к doh.opendns.com (146.112.41.2) и dns.google (8.8.4.4) отменялся.
+  - DOMAIN-SUFFIX,cloudflare-dns.com,DIRECT
+  - DOMAIN-SUFFIX,doh.opendns.com,DIRECT
+  - DOMAIN-SUFFIX,dns.google,DIRECT
+  - DOMAIN-SUFFIX,doh.pub,DIRECT
+  - DOMAIN-SUFFIX,dns.alidns.com,DIRECT
+  - DOMAIN-SUFFIX,engage.cloudflareclient.com,DIRECT
 
-  # ### Pinned-Proxy
-  - GEOSITE,openai,Pinned-Proxy
-  - GEOSITE,google-gemini,Pinned-Proxy
-  - GEOSITE,anthropic,Pinned-Proxy
-  - DOMAIN-SUFFIX,grok.com,Pinned-Proxy
-  - DOMAIN-SUFFIX,2ip.io,Pinned-Proxy
-  - DOMAIN-SUFFIX,ipinfo.io,Pinned-Proxy
-  - DOMAIN-SUFFIX,ip-api.com,Pinned-Proxy
-  - DOMAIN-SUFFIX,whatismyipaddress.com,Pinned-Proxy
-  - DOMAIN-SUFFIX,whatismyip.com,Pinned-Proxy
-  - DOMAIN-SUFFIX,myip.com,Pinned-Proxy
-  - DOMAIN-SUFFIX,ipleak.net,Pinned-Proxy
-  - DOMAIN-SUFFIX,icanhazip.com,Pinned-Proxy
-  - DOMAIN-SUFFIX,ident.me,Pinned-Proxy
-  - DOMAIN-SUFFIX,ip.sb,Pinned-Proxy
-  - DOMAIN-SUFFIX,wimi5.com,Pinned-Proxy
-  - DOMAIN-SUFFIX,ip138.com,Pinned-Proxy
-  - DOMAIN-SUFFIX,ipify.org,Pinned-Proxy
-  - DOMAIN-SUFFIX,myexternalip.com,Pinned-Proxy
-  - DOMAIN-SUFFIX,trackip.net,Pinned-Proxy
+  # Поисковые движки — напрямик
+  - DOMAIN-SUFFIX,duckduckgo.com,DIRECT
+  - DOMAIN-SUFFIX,mojeek.com,DIRECT
+  - DOMAIN-SUFFIX,startpage.com,DIRECT
+  - DOMAIN-SUFFIX,bing.com,DIRECT
 
-  # ### Advertisement
-  - GEOSITE,youtube,Advertisement
-  - DOMAIN-KEYWORD,jnn/v1/Create,Advertisement  # BotGuard для YT
-  - GEOSITE,tiktok,Advertisement
-  - GEOSITE,facebook,Advertisement
-  - GEOSITE,netflix,Advertisement
-  - GEOIP,netflix,Advertisement
-  - GEOSITE,category-porn,Advertisement
+  # ПРАВИЛО №0: Блокировка рекламы
+  - RULE-SET,hagezi_pro,Запломбировано
+  - GEOSITE,category-ads-all,Запломбировано
+  - GEOSITE,win-spy,Запломбировано
 
-  # ### Normal-Proxy
-  - GEOSITE,spotify,Normal-Proxy
-  - GEOSITE,tidal,Normal-Proxy
-  - GEOSITE,category-public-tracker,Normal-Proxy
-  - DOMAIN-SUFFIX,radarr.video,Normal-Proxy
-  - DOMAIN-SUFFIX,tmdb.org,Normal-Proxy
-  - GEOSITE,microsoft,Normal-Proxy
-  - GEOSITE,intel,Normal-Proxy
+  # DIRECT RULES
+  - DOMAIN-SUFFIX,avito.ru,DIRECT
+  - DOMAIN-SUFFIX,avito.st,DIRECT
+  - GEOSITE,category-ru,DIRECT
+  - DOMAIN-SUFFIX,ru,DIRECT
+  - DOMAIN-SUFFIX,by,DIRECT
+  - DOMAIN-SUFFIX,xn--p1ai,DIRECT
+  - DOMAIN-SUFFIX,yandex-pogoda.static-storage.net,DIRECT
+  - GEOSITE,category-gov-ru,DIRECT
+  - GEOIP,RU,DIRECT,no-resolve
 
-  # ### ПРАВИЛО №7: Весь Other-Traffic
-  - GEOSITE,google,Other-Traffic
-  - GEOSITE,apple,Other-Traffic
-  - MATCH,Other-Traffic
+  # торрент трафик от клиентов
+  # По портам (если PROCESS-NAME не работает в Docker)
+  - DST-PORT,6881-6889,DIRECT  # стандартные BitTorrent порты
+  - DST-PORT,51413,DIRECT      # transmission по умолчанию
+  # По имени процесса (если Mihomo видит процессы на хосте)
+  - PROCESS-NAME,transmission-gtk,DIRECT
+  - PROCESS-NAME,transmission-daemon,DIRECT
+  - PROCESS-NAME,qbittorrent,DIRECT
+  - PROCESS-NAME,deluge,DIRECT
+  - PROCESS-NAME,rtorrent,DIRECT
+  - PROCESS-NAME,qbittorrent.exe,DIRECT
+  - PROCESS-NAME,utorrent.exe,DIRECT
+
+  # ГРУППА 2: AIy
+  - GEOSITE,openai,Pinned Proxy
+  - GEOSITE,google-gemini,Pinned Proxy
+  - GEOSITE,anthropic,Pinned Proxy
+  - DOMAIN-SUFFIX,grok.com,Pinned Proxy
+  - DOMAIN-SUFFIX,openrouter.ai,Pinned Proxy
+  - DOMAIN-SUFFIX,2ip.io,Pinned Proxy
+  - DOMAIN-SUFFIX,2ip.ru,Pinned Proxy
+  - DOMAIN-SUFFIX,ipinfo.io,Pinned Proxy
+  - DOMAIN-SUFFIX,ip-api.com,Pinned Proxy
+  - DOMAIN-SUFFIX,whatismyipaddress.com,Pinned Proxy
+  - DOMAIN-SUFFIX,whatismyip.com,Pinned Proxy
+  - DOMAIN-SUFFIX,myip.com,Pinned Proxy
+  - DOMAIN-SUFFIX,ipleak.net,Pinned Proxy
+  - DOMAIN-SUFFIX,icanhazip.com,Pinned Proxy
+  - DOMAIN-SUFFIX,ident.me,Pinned Proxy
+  - DOMAIN-SUFFIX,ip.sb,Pinned Proxy
+  - DOMAIN-SUFFIX,wimi5.com,Pinned Proxy
+  - DOMAIN-SUFFIX,ip138.com,Pinned Proxy
+  - DOMAIN-SUFFIX,ipify.org,Pinned Proxy
+  - DOMAIN-SUFFIX,myexternalip.com,Pinned Proxy
+  - DOMAIN-SUFFIX,trackip.net,Pinned Proxy
+
+  # ### ГРУППА 3: Развлечения и Контроль (YouTube, Игры, 18+)
+  - GEOSITE,youtube,Развлечения и Контроль
+  - DOMAIN-KEYWORD,jnn/v1/Create,Развлечения и Контроль  # BotGuard для YT
+  - OR,((DOMAIN-SUFFIX,gql.twitch.tv),(DOMAIN-SUFFIX,usher.ttvnw.net)),Развлечения и Контроль
+  # Roblox открыть порты xkeen -ap 80,443,49152:65535
+  - AND,((IP-ASN,22697),(DST-PORT,49152-65535)),Развлечения и Контроль
+  - GEOSITE,roblox,Развлечения и Контроль
+  - DOMAIN-SUFFIX,roblox.com,Развлечения и Контроль
+  - DOMAIN-SUFFIX,rbxcdn.com,Развлечения и Контроль
+  - DOMAIN-SUFFIX,rbxinfra.net,Развлечения и Контроль
+  - GEOSITE,roblox,Развлечения и Контроль
+  # Roblox end
+  # SupperCell с MMORPG Открыть порт 9339 xkeen -ap 9339
+  - GEOSITE,supercell,Развлечения и Контроль
+  - DOMAIN-KEYWORD,supercell,Развлечения и Контроль
+  - AND,((IP-ASN,14618),(DST-PORT,9339)),Развлечения и Контроль
+  - AND,((IP-ASN,16509),(DST-PORT,9339)),Развлечения и Контроль
+  # Supercell end
+  - GEOSITE,steam,Развлечения и Контроль
+  - DOMAIN-SUFFIX,kino.pub,Развлечения и Контроль
+  - DOMAIN-SUFFIX,patreon.com,Развлечения и Контроль
+  - GEOSITE,twitter,Развлечения и Контроль
+  - GEOSITE,instagram,Развлечения и Контроль
+  - GEOSITE,tiktok,Развлечения и Контроль
+  - GEOSITE,facebook,Развлечения и Контроль
+  - GEOSITE,netflix,Развлечения и Контроль
+  - GEOIP,netflix,Развлечения и Контроль
+  # клубничка
+  - GEOSITE,category-porn,Развлечения и Контроль
+  - DOMAIN-SUFFIX,onlyfans.com,Развлечения и Контроль
+  - DOMAIN-SUFFIX,fansly.com,Развлечения и Контроль
+  - DOMAIN-SUFFIX,patreon.com,Развлечения и Контроль
+  - DOMAIN-SUFFIX,rockblack.su,Развлечения и Контроль
+  - DOMAIN-SUFFIX,rockblack.pro,Развлечения и Контроль
+  - DOMAIN-SUFFIX,rockblack.info,Развлечения и Контроль
+
+  # == ГРУППА 4: Normal Proxy (Авторотация: соцсети, Discord, торрент-сайты/анонсеры)
+  # самая ходовая запрещенка
+  - GEOSITE,telegram,Normal Proxy
+  - GEOIP,telegram,Normal Proxy,no-resolve
+  - RULE-SET,discord,Normal Proxy
+  - GEOSITE,linkedin,Normal Proxy
+  - GEOSITE,spotify,Normal Proxy
+  - GEOSITE,notion,Normal Proxy
+  - GEOSITE,tidal,Normal Proxy
+  - GEOSITE,linkedin,Normal Proxy
+  - GEOSITE,google-play,Normal Proxy
+  # побочная блокировка
+  - DOMAIN-SUFFIX,fenno.ai,Normal Proxy
+  - DOMAIN-SUFFIX,apikey.fan,Normal Proxy
+  # Торрент-сайты и анонсеры (списки geosite от runetfreedom)
+  # не полный https://github.com/v2fly/domain-list-community/blob/master/data/category-public-tracker
+  # так что приходится костылять
+  - GEOSITE,category-public-tracker,Normal Proxy
+  - GEOSITE,rutracker,Normal Proxy
+  - DOMAIN-SUFFIX,retracker.local,DIRECT
+  - DOMAIN-SUFFIX,lostfilm.tv,Normal Proxy
+  # LostFilm - Служебный домен
+  - DOMAIN-SUFFIX,retre.org,Normal Proxy
+  - DOMAIN-SUFFIX,tracktor.in,Normal Proxy
+  - DOMAIN-SUFFIX,tracktor.site,Normal Proxy
+  - DOMAIN-SUFFIX,rutor.info,Normal Proxy
+   # Технические анонсеры (трекеры), вшитые в торренты Rutor
+  - DOMAIN-SUFFIX,rutor.org,Normal Proxy
+  - DOMAIN-SUFFIX,opentrust.ru,Normal Proxy
+  - DOMAIN-SUFFIX,nnmclub.to,Normal Proxy
+  # Технические домены и приватные анонсеры (bt*, ipv6*)
+  - DOMAIN-SUFFIX,nnm-club.name,Normal Proxy
+  - DOMAIN-SUFFIX,nnm-club.ws,Normal Proxy
+  - DOMAIN-SUFFIX,nnm-club.to,Normal Proxy
+  - DOMAIN-SUFFIX,kinozal.tv,Normal Proxy
+  - DOMAIN-SUFFIX,fast-torrent.ru,Normal Proxy
+  - DOMAIN-SUFFIX,tapochek.net,Normal Proxy
+    # kino.pub
+  - DOMAIN-SUFFIX,firebase-settings.crashlytics.com,Normal Proxy
+  - DOMAIN-SUFFIX,firebaseinstallations.googleapis.com,Normal Proxy
+  - DOMAIN-SUFFIX,kp-pro.cloud,Normal Proxy
+  - DOMAIN-SUFFIX,firebaseremoteconfigrealtime.googleapis.com,Normal Proxy
+  - DOMAIN-SUFFIX,firebaseremoteconfig.googleapis.com,Normal Proxy
+  - DOMAIN-SUFFIX,cdn32.lol,Normal Proxy
+  - DOMAIN-SUFFIX,kino.pub,Normal Proxy
+    # Whatsapp // открывам порты xkeen -ap 443,3478,46420
+  - GEOSITE,whatsapp,Normal Proxy
+  - IP-ASN,32934,Normal Proxy
+  - IP-ASN,11917,Normal Proxy
+  - IP-ASN,9002,Normal Proxy
+  # Viber
+  - GEOSITE,viber,Normal Proxy
+  - IP-ASN,16509,Normal Proxy
+  # Глобальные инфраструктурные CDN (Cloudflare, Akamai, Fastly) по доменным категориям geosite
+  # ВНИМАНИЕ: категория cloudflare затягивает в прокси и служебные домены Cloudflare —
+  # cloudflare-dns.com (наш DoH) и cp.cloudflare.com (health-check групп url-test выше),
+  # то есть проверка живости группы идёт через саму группу. Служебные домены выведены
+  # в DIRECT выше; если туннель начнёт рваться — сузить это правило.
+  - GEOSITE,cloudflare,Normal Proxy
+  - GEOSITE,akamai,Normal Proxy
+  - GEOSITE,fastly,Normal Proxy
+  # === с геоблоком от них
+  - DOMAIN-SUFFIX,mongodb.com,Normal Proxy
+  - DOMAIN-SUFFIX,confluent.io,Normal Proxy
+  - DOMAIN-SUFFIX,mongodb.com,Normal Proxy
+  - DOMAIN-SUFFIX,trino.io,Normal Proxy
+  - DOMAIN-SUFFIX,confluent.io,Normal Proxy
+  - DOMAIN-SUFFIX,databricks.com,Normal Proxy
+  - DOMAIN-SUFFIX,radarr.video,Normal Proxy
+  - DOMAIN-SUFFIX,tmdb.org,Normal Proxy
+  - DOMAIN-SUFFIX,jdx.dev,Normal Proxy
+  - DOMAIN-SUFFIX,java.net,Normal Proxy
+  # === с геоблоком у них иногда спадающий
+  - DOMAIN-SUFFIX,router-for.me,Normal Proxy
+  - DOMAIN-SUFFIX,omp.sh,Normal Proxy
+  - DOMAIN-SUFFIX,github.com,Остальной трафик
+  - GEOSITE,microsoft,Normal Proxy
+  - GEOSITE,intel,Normal Proxy
+
+  # ### ПРАВИЛО №7: Весь остальной трафик
+  - GEOSITE,google,Остальной трафик
+  - GEOSITE,apple,Остальной трафик
+  - GEOSITE,github,Остальной трафик
+  - MATCH,Остальной трафик
+
+# Локальный порт к cliproxyapi через узел golem (только в uni; слои заменяют списком [])
+tunnels:
+  - tcp,127.0.0.1:18317,cpa.golem:8317,Pinned Proxy

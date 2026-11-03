@@ -33,6 +33,15 @@ for layer_path in "$INPUT_DIR"/cfg.mih.*.yml; do
 
     tmp_file="/tmp/config-$flavor.tmp"
     if yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' "$BASE_FILE" "$layer_path" > "$tmp_file"; then
+        # golem-узел живёт только в базе: если его uuid попал в слой, слой не переопределяет golem-ai.
+        # Для слоя, который golem добавляет намеренно: ALLOW_GOLEM_<FLAVOR>=1.
+        allow_var="ALLOW_GOLEM_$(echo "$flavor" | tr '[:lower:]' '[:upper:]')"
+        leak_uuid=$(yq eval '.proxy-providers.golem-ai.payload[0].uuid // ""' "$BASE_FILE")
+        if [ "${!allow_var}" != "1" ] && [ -n "$leak_uuid" ] && grep -qF "$leak_uuid" "$tmp_file"; then
+            echo "[mixer] ERROR: golem uuid leaked into config-$flavor.yml (layer must override proxy-providers.golem-ai). Skipping." >&2
+            rm -f "$tmp_file"
+            continue
+        fi
         mv "$tmp_file" "$output_file"
         echo "[mixer] Successfully compiled: config-$flavor.yml"
         host_var="PROXY_$(echo "$flavor" | tr '[:lower:]' '[:upper:]')_HOST"

@@ -15,6 +15,19 @@
 * **LinuxServer Base**: Built on top of `ghcr.io/linuxserver/baseimage-alpine` for built-in `s6-overlay` supervisor control and pristine host `PUID`/`PGID` permission mirroring.
 * **Bot-friendly Upstream**: Formatted explicitly for daily out-of-the-box tracking by automated dependency bots like Dependabot.
 
+## golem-ai override scheme
+The base `cfg.mih.uni.yml` is the only profile that routes AI traffic through the personal `golem` node:
+* `proxy-providers.golem-ai` — `inline` provider with a single vless+ws+tls node (`golem`);
+* proxy group `Pinned Proxy` uses `use: [golem-ai]`, AI-domain rules point to `Pinned Proxy`;
+* top-level `tunnels:` has one entry (`tcp,127.0.0.1:18317,cpa.golem:8317,Pinned Proxy`).
+
+Other layers (`cell`, `nas`) must **not** inherit the node. `yq` deep-merges maps but replaces lists whole, so each such layer has to:
+* repeat all `proxy-groups` from the base, with `Pinned Proxy` using `use: [vpnd-io-vless, vpnd-io-ws]`;
+* replace `proxy-providers.golem-ai` with a harmless `inline` provider holding one `type: direct` node (mihomo rejects `golem-ai: null` — "unset fields: type" — and an empty inline — "file doesn't have any proxy"; `inline` needs mihomo >= 1.18);
+* set `tunnels: []`.
+
+Safety nets: `mix.sh` refuses to write a layer if the base golem `uuid` is found in the merged result (opt out for a layer that intentionally ships golem with `ALLOW_GOLEM_<FLAVOR>=1`), and `mise run test` runs `test:verify-schema` over the fixtures.
+
 ## Quick Start Configuration
 
 ### Running instructions

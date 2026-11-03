@@ -4,3 +4,48 @@ log-level: warning
 
 authentication:
   - test_lan_user:test_lanpassword
+
+# golem есть только в uni: слой подменяет узел безобидным direct и обнуляет tunnels
+tunnels: []
+proxy-providers:
+  golem-ai:
+    type: inline
+    payload:
+      - name: unused
+        type: direct
+
+proxy-groups:
+  - name: 'Запломбировано'
+    type: select
+    proxies: [REJECT, DIRECT]
+    icon: "https://www.svgrepo.com/show/300290/sign-roadblock.svg"
+
+  - name: 'Pinned Proxy'
+    type: select
+    use: [vpnd-io-vless,vpnd-io-ws]
+    icon: "https://www.svgrepo.com/show/306500/openai.svg"
+
+  - name: 'Развлечения и Контроль'
+    type: select
+    use: [vpnd-io-vless,vpnd-io-ws]
+    proxies: [REJECT]
+    icon: "https://www.svgrepo.com/show/130410/games-control.svg"
+
+  - name: 'Normal Proxy'
+    type: url-test
+    use: [vpnd-io-vless,vpnd-io-ws]
+    url: 'https://cp.cloudflare.com/generate_204'
+    interval: 300
+    tolerance: 150
+    icon: "https://www.svgrepo.com/show/390797/360-rotate-vr-movement.svg"
+
+  - name: 'Остальной трафик'
+    type: select
+    use: [vpnd-io-vless,vpnd-io-ws]
+    proxies: [DIRECT]
+    icon: "https://www.svgrepo.com/show/448084/other-income.svg"
+
+  - name: GLOBAL
+    type: select
+    hidden: true
+    proxies: ['Normal Proxy', DIRECT]

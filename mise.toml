@@ -1,5 +1,5 @@
 [vars]
-yq_version = "4.53.6"
+yq_version = "4.54.1"
 
 [tools]
 yq = "{{ vars.yq_version }}"
@@ -72,6 +72,36 @@ description = "Byte-diff compiled cell profile against expected fixture"
 depends = ["test:mix-direct"]
 run = "diff -u tests/fixtures/expected/config-cell.yml tests/fixtures/output/config-cell.yml"
 
+[tasks."test:verify-schema"]
+description = "Assert golem-ai schema: no golem leak into cell/nas layers, Pinned Proxy on vpnd-io-*, empty tunnels, all rule targets exist"
+depends = ["test:mix-direct"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+base=tests/fixtures/input/cfg.mih.uni.yml
+uuid=$(yq eval '.proxy-providers.golem-ai.payload[0].uuid' "$base")
+path=$(yq eval '.proxy-providers.golem-ai.payload[0].ws-opts.path' "$base")
+[ -n "$uuid" ] && [ "$uuid" != "null" ] && [ -n "$path" ] && [ "$path" != "null" ] \\
+  || { echo "[verify-schema] golem node missing in uni base" >&2; exit 1; }
+for flavor in cell nas; do
+  for dir in expected output; do
+    f=tests/fixtures/$dir/config-$flavor.yml
+    if grep -qF "$uuid" "$f" || grep -qF "$path" "$f"; then
+      echo "[verify-schema] golem uuid/path leaked into $f" >&2; exit 1
+    fi
+    use=$(yq eval '.proxy-groups[] | select(.name == "Pinned Proxy") | .use | sort | join(",")' "$f")
+    [ "$use" = "vpnd-io-vless,vpnd-io-ws" ] \\
+      || { echo "[verify-schema] $f: Pinned Proxy use is '$use'" >&2; exit 1; }
+    [ "$(yq eval '.tunnels | length' "$f")" = "0" ] \\
+      || { echo "[verify-schema] $f: tunnels must be empty" >&2; exit 1; }
+    targets=$(yq eval '.rules[] | sub(",(no-resolve|src)$"; "") | sub("^.*,"; "")' "$f" | sort -u)
+    known=$(yq eval '.proxy-groups[].name' "$f"; printf '%s\\n' DIRECT REJECT REJECT-DROP PASS COMPATIBLE)
+    missing=$(comm -23 <(printf '%s\\n' "$targets") <(printf '%s\\n' "$known" | sort -u))
+    [ -z "$missing" ] || { echo "[verify-schema] $f: unknown rule targets: $missing" >&2; exit 1; }
+  done
+done
+"""
+
 [tasks."test:verify-api-nas"]
 description = "Compare live nas runtime state against normalized expected fixture"
 depends = ["test:trigger"]
@@ -110,7 +140,7 @@ diff -u /tmp/expected-cell.norm.json /tmp/actual-cell.norm.json
 
 [tasks."test"]
 description = "Run granular integration test suite against live Mihomo API responses"
-depends = ["test:verify-mix-nas", "test:verify-mix-cell", "test:verify-api-nas", "test:verify-api-cell"]
+depends = ["test:verify-mix-nas", "test:verify-mix-cell", "test:verify-schema", "test:verify-api-nas", "test:verify-api-cell"]
 depends_post = ["down"]
 
 [tasks."up"]
